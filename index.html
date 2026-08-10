@@ -237,7 +237,8 @@
       <li>Cota histórica e cadastro de fundos: Portal Dados Abertos da CVM (dados.cvm.gov.br). CDI diário: API de séries temporais do Banco Central (SGS 12).</li>
       <li>Sharpe e Sortino usam retorno diário em excesso ao CDI, anualizados por √252 dias úteis. Sortino usa desvio da parte negativa do excesso (MAR = CDI).</li>
       <li>Capture ratio compara retornos mensais compostos do fundo e do CDI nos meses em que o CDI foi positivo (upside) e negativo (downside). Como o CDI raramente é negativo no Brasil, o downside capture costuma ficar indefinido — isso não é um erro do cálculo.</li>
-      <li>Tudo roda no seu navegador: nenhum dado é enviado para um servidor. Os arquivos da CVM trazem todos os fundos do país por mês, então o primeiro cálculo de um novo fundo ou período pode demorar e consumir alguns MB — resultados ficam em cache local para consultas futuras ao mesmo fundo.</li>
+      <li>Tudo roda no seu navegador: nenhum dado é enviado para um servidor próprio. Os arquivos da CVM trazem todos os fundos do país por mês, então o primeiro cálculo de um novo fundo ou período pode demorar e consumir alguns MB — resultados ficam em cache local para consultas futuras ao mesmo fundo.</li>
+      <li>O site da CVM (e às vezes o do Banco Central) não libera acesso direto por navegador — quando isso acontece, a busca passa automaticamente por um proxy público (allorigins.win), que apenas repassa os mesmos arquivos públicos. Se esse proxy estiver fora do ar, a busca falha temporariamente.</li>
       <li>Ferramenta educacional — confira os dados oficiais do fundo (lâmina, extrato) antes de qualquer decisão de investimento.</li>
     </ul>
   </div>
@@ -307,6 +308,22 @@
     });
   }
 
+  // ---------------- Fetch com fallback de CORS ----------------
+  // A CVM e (às vezes) o Banco Central não liberam CORS para chamadas de
+  // navegador; quando o fetch direto falha, tentamos via um proxy público.
+  const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
+  async function fetchWithCorsFallback(url, init){
+    try{
+      const res = await fetch(url, init);
+      if(res.ok || res.status===404) return res;
+      throw new Error('HTTP '+res.status);
+    } catch(directErr){
+      const res = await fetch(CORS_PROXY + encodeURIComponent(url), init);
+      if(!res.ok && res.status!==404) throw new Error('HTTP '+res.status+' (via proxy)');
+      return res;
+    }
+  }
+
   // ---------------- CVM cadastro ----------------
   const CAD_URL = 'https://dados.cvm.gov.br/dados/FI/CAD/DADOS/cad_fi.csv';
   const CAD_MAX_AGE_MS = 20*24*60*60*1000; // ~20 dias
@@ -346,7 +363,7 @@
   }
 
   async function fetchCadFiText(onProgress){
-    const res = await fetch(CAD_URL);
+    const res = await fetchWithCorsFallback(CAD_URL);
     if(!res.ok) throw new Error('HTTP '+res.status);
     const total = parseInt(res.headers.get('content-length')||'0',10);
     if(!res.body || !res.body.getReader){
@@ -394,7 +411,7 @@
       return fundIndex;
     } catch(err){
       statusEl.className = 'status-line err';
-      statusEl.textContent = 'Não consegui baixar a lista de fundos da CVM (bloqueio de CORS, sem internet, ou o site da CVM mudou de endereço). Tente de novo em instantes.';
+      statusEl.textContent = 'Não consegui baixar a lista de fundos da CVM, mesmo tentando pelo proxy de CORS (proxy fora do ar, sem internet, ou o site da CVM mudou de endereço). Tente de novo em instantes.';
       throw err;
     } finally {
       progEl.classList.remove('on');
@@ -428,7 +445,7 @@
 
   async function fetchMonthCsvText(yyyymm){
     const url = `https://dados.cvm.gov.br/dados/FI/DOC/INF_DIARIO/DADOS/inf_diario_fi_${yyyymm}.zip`;
-    const res = await fetch(url);
+    const res = await fetchWithCorsFallback(url);
     if(res.status===404) return null;
     if(!res.ok) throw new Error('HTTP '+res.status+' em '+yyyymm);
     const buf = await res.arrayBuffer();
@@ -489,7 +506,7 @@
     if(cached && (Date.now()-cached.ts) < 24*60*60*1000) return cached.rows;
     const fmt = d => { const [y,m,dd]=d.split('-'); return `${dd}/${m}/${y}`; };
     const url = `https://api.bcb.gov.br/dados/serie/bcdata.sgs.12/dados?formato=json&dataInicial=${fmt(dataInicialISO)}&dataFinal=${fmt(dataFinalISO)}`;
-    const res = await fetch(url);
+    const res = await fetchWithCorsFallback(url);
     if(!res.ok) throw new Error('HTTP '+res.status+' ao buscar CDI no Banco Central');
     const json = await res.json();
     const rows = json.map(r=>{
