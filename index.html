@@ -313,14 +313,18 @@
   // navegador; quando o fetch direto falha, tentamos via um proxy público.
   const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
   async function fetchWithCorsFallback(url, init){
+    let directErr;
     try{
       const res = await fetch(url, init);
       if(res.ok || res.status===404) return res;
-      throw new Error('HTTP '+res.status);
-    } catch(directErr){
+      directErr = new Error('HTTP '+res.status);
+    } catch(e){ directErr = e; }
+    try{
       const res = await fetch(CORS_PROXY + encodeURIComponent(url), init);
-      if(!res.ok && res.status!==404) throw new Error('HTTP '+res.status+' (via proxy)');
+      if(!res.ok && res.status!==404) throw new Error('HTTP '+res.status);
       return res;
+    } catch(proxyErr){
+      throw new Error(`direto: ${directErr.name||''} ${directErr.message} | via proxy: ${proxyErr.name||''} ${proxyErr.message}`);
     }
   }
 
@@ -411,7 +415,7 @@
       return fundIndex;
     } catch(err){
       statusEl.className = 'status-line err';
-      statusEl.textContent = 'Não consegui baixar a lista de fundos da CVM, mesmo tentando pelo proxy de CORS (proxy fora do ar, sem internet, ou o site da CVM mudou de endereço). Tente de novo em instantes.';
+      statusEl.textContent = 'Não consegui baixar a lista de fundos da CVM, mesmo tentando pelo proxy de CORS. Detalhe: ' + (err && err.message ? err.message : String(err));
       throw err;
     } finally {
       progEl.classList.remove('on');
