@@ -424,7 +424,7 @@
   async function ensureFundIndex(){
     if(fundIndex) return fundIndex;
     const statusEl = $('searchStatus');
-    const cached = await idbGet('cadastro','all').catch(()=>null);
+    const cached = await idbGet('cadastro','all_v2').catch(()=>null);
     if(cached && (Date.now()-cached.ts) < CAD_MAX_AGE_MS){
       fundIndex = cached.data;
       return fundIndex;
@@ -465,7 +465,7 @@
         parsed.push(f);
       }
       fundIndex = parsed;
-      await idbPut('cadastro','all',{ts:Date.now(), data:parsed});
+      await idbPut('cadastro','all_v2',{ts:Date.now(), data:parsed});
       statusEl.textContent = `Pronto — ${parsed.length.toLocaleString('pt-BR')} fundos ativos carregados (${legado.length.toLocaleString('pt-BR')} legado + ${classes.length.toLocaleString('pt-BR')} classes RCVM175).`;
       return fundIndex;
     } catch(err){
