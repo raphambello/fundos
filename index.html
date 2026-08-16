@@ -340,39 +340,59 @@
     return -1;
   }
 
-  function parseCadFi(text){
+  // Formato genérico: funciona tanto pro cad_fi.csv legado (fundos ainda não
+  // adaptados à Resolução CVM 175) quanto pro registro_classe.csv novo
+  // (fundos adaptados, identificados pelo CNPJ da classe de cotas).
+  function parseFundCsv(text, cols){
     const lines = text.split('\n');
     const header = lines[0].replace(/\r$/,'').split(';').map(h=>h.trim().toUpperCase());
-    const idxCnpj = findColIdx(header,'CNPJ_FUNDO','CNPJ');
-    const idxNome = findColIdx(header,'DENOM_SOCIAL','DENOM');
-    const idxSit = findColIdx(header,'SIT');
-    const idxClasse = findColIdx(header,'CLASSE');
-    if(idxCnpj<0 || idxNome<0) throw new Error('Não encontrei as colunas de CNPJ/nome no cadastro da CVM — o formato do arquivo pode ter mudado.');
+    const idxCnpj = findColIdx(header, cols.cnpj[0], cols.cnpj[1]);
+    const idxNome = findColIdx(header, cols.nome[0], cols.nome[1]);
+    const idxSit = findColIdx(header, cols.sit[0], cols.sit[1]);
+    const idxClasse = cols.classe ? findColIdx(header, cols.classe[0], cols.classe[1]) : -1;
+    if(idxCnpj<0 || idxNome<0) throw new Error('Não encontrei as colunas de CNPJ/nome em um dos cadastros da CVM — o formato do arquivo pode ter mudado.');
     const out=[];
     for(let i=1;i<lines.length;i++){
       const line = lines[i];
       if(!line || !line.trim()) continue;
-      const cols = line.split(';');
-      if(cols.length<=idxCnpj || cols.length<=idxNome) continue;
-      const sit = idxSit>=0 ? cols[idxSit].trim() : '';
+      const c = line.split(';');
+      if(c.length<=idxCnpj || c.length<=idxNome) continue;
+      const sit = idxSit>=0 ? c[idxSit].trim() : '';
       if(sit && !normalize(sit).includes('funcionamento')) continue; // só fundos ativos no índice de busca
       out.push({
-        cnpj: cols[idxCnpj].trim(),
-        nome: cols[idxNome].trim(),
-        classe: idxClasse>=0 ? cols[idxClasse].trim() : '',
+        cnpj: c[idxCnpj].trim(),
+        nome: c[idxNome].trim(),
+        classe: idxClasse>=0 ? c[idxClasse].trim() : '',
         sit,
       });
     }
     return out;
   }
 
-  async function fetchCadFiText(onProgress){
-    const res = await fetchWithCorsFallback(CAD_URL);
+  function parseCadFi(text){
+    return parseFundCsv(text, {
+      cnpj: ['CNPJ_FUNDO','CNPJ'],
+      nome: ['DENOM_SOCIAL','DENOM'],
+      sit: ['SIT','SIT'],
+      classe: ['CLASSE','CLASSE'],
+    });
+  }
+
+  function parseRegistroClasse(text){
+    return parseFundCsv(text, {
+      cnpj: ['CNPJ_CLASSE','CNPJ'],
+      nome: ['DENOMINACAO_SOCIAL','DENOM'],
+      sit: ['SITUACAO','SIT'],
+      classe: ['TIPO_CLASSE','TIPO_CLASSE'],
+    });
+  }
+
+  async function fetchBytesWithProgress(url, onProgress){
+    const res = await fetchWithCorsFallback(url);
     if(!res.ok) throw new Error('HTTP '+res.status);
     const total = parseInt(res.headers.get('content-length')||'0',10);
     if(!res.body || !res.body.getReader){
-      const buf = await res.arrayBuffer();
-      return new TextDecoder('windows-1252').decode(buf);
+      return new Uint8Array(await res.arrayBuffer());
     }
     const reader = res.body.getReader();
     let received=0; const chunks=[];
@@ -384,7 +404,21 @@
     }
     const buf = new Uint8Array(received); let off=0;
     for(const c of chunks){ buf.set(c, off); off += c.length; }
+    return buf;
+  }
+
+  async function fetchCadFiText(onProgress){
+    const buf = await fetchBytesWithProgress(CAD_URL, onProgress);
     return new TextDecoder('windows-1252').decode(buf);
+  }
+
+  const CLASSE_ZIP_URL = 'https://dados.cvm.gov.br/dados/FI/CAD/DADOS/registro_fundo_classe.zip';
+  async function fetchRegistroClasseText(onProgress){
+    const buf = await fetchBytesWithProgress(CLASSE_ZIP_URL, onProgress);
+    const files = fflate.unzipSync(buf);
+    const name = Object.keys(files).find(n => /classe/i.test(n) && n.toLowerCase().endsWith('.csv'));
+    if(!name) throw new Error('ZIP de classes da CVM não trouxe um registro_classe.csv.');
+    return new TextDecoder('windows-1252').decode(files[name]);
   }
 
   async function ensureFundIndex(){
@@ -399,19 +433,40 @@
     statusEl.className = 'status-line';
     const progEl = $('searchProgress'), fillEl = $('searchProgressFill');
     progEl.classList.add('on');
+    const mkProgress = (label) => (recv,total) => {
+      if(total){
+        fillEl.style.width = Math.min(100, recv/total*100).toFixed(0)+'%';
+        statusEl.textContent = `${label}… ${(recv/1e6).toFixed(1)} MB de ${(total/1e6).toFixed(1)} MB`;
+      } else {
+        statusEl.textContent = `${label}… ${(recv/1e6).toFixed(1)} MB`;
+      }
+    };
     try{
-      const text = await fetchCadFiText((recv,total)=>{
-        if(total){
-          fillEl.style.width = Math.min(100, recv/total*100).toFixed(0)+'%';
-          statusEl.textContent = `Baixando lista de fundos da CVM… ${(recv/1e6).toFixed(1)} MB de ${(total/1e6).toFixed(1)} MB`;
-        } else {
-          statusEl.textContent = `Baixando lista de fundos da CVM… ${(recv/1e6).toFixed(1)} MB`;
-        }
-      });
-      const parsed = parseCadFi(text);
+      // Dois cadastros: fundos "não adaptados" à Resolução CVM 175 (cad_fi.csv,
+      // CNPJ do fundo) e fundos adaptados, organizados por classe de cotas
+      // (registro_fundo_classe.zip, CNPJ da classe — é esse CNPJ que aparece
+      // no extrato/lâmina de fundos migrados para o novo regime).
+      const cadText = await fetchCadFiText(mkProgress('Baixando cadastro de fundos da CVM'));
+      const legado = parseCadFi(cadText);
+
+      let classes = [];
+      try{
+        const classeText = await fetchRegistroClasseText(mkProgress('Baixando cadastro de classes (Resolução CVM 175)'));
+        classes = parseRegistroClasse(classeText);
+      } catch(classeErr){
+        console.warn('Falha ao baixar/processar registro_fundo_classe.zip, seguindo só com o cadastro legado:', classeErr);
+      }
+
+      const seen = new Set();
+      const parsed = [];
+      for(const f of legado.concat(classes)){
+        if(seen.has(f.cnpj)) continue;
+        seen.add(f.cnpj);
+        parsed.push(f);
+      }
       fundIndex = parsed;
       await idbPut('cadastro','all',{ts:Date.now(), data:parsed});
-      statusEl.textContent = `Pronto — ${parsed.length.toLocaleString('pt-BR')} fundos ativos carregados.`;
+      statusEl.textContent = `Pronto — ${parsed.length.toLocaleString('pt-BR')} fundos ativos carregados (${legado.length.toLocaleString('pt-BR')} legado + ${classes.length.toLocaleString('pt-BR')} classes RCVM175).`;
       return fundIndex;
     } catch(err){
       statusEl.className = 'status-line err';
