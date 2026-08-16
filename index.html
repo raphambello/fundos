@@ -238,7 +238,7 @@
       <li>Sharpe e Sortino usam retorno diário em excesso ao CDI, anualizados por √252 dias úteis. Sortino usa desvio da parte negativa do excesso (MAR = CDI).</li>
       <li>Capture ratio compara retornos mensais compostos do fundo e do CDI nos meses em que o CDI foi positivo (upside) e negativo (downside). Como o CDI raramente é negativo no Brasil, o downside capture costuma ficar indefinido — isso não é um erro do cálculo.</li>
       <li>Tudo roda no seu navegador: nenhum dado é enviado para um servidor próprio. Os arquivos da CVM trazem todos os fundos do país por mês, então o primeiro cálculo de um novo fundo ou período pode demorar e consumir alguns MB — resultados ficam em cache local para consultas futuras ao mesmo fundo.</li>
-      <li>O site da CVM (e às vezes o do Banco Central) não libera acesso direto por navegador — quando isso acontece, a busca passa automaticamente por um proxy público (allorigins.win), que apenas repassa os mesmos arquivos públicos. Se esse proxy estiver fora do ar, a busca falha temporariamente.</li>
+      <li>O site da CVM (e às vezes o do Banco Central) não libera acesso direto por navegador — quando isso acontece, a busca passa automaticamente por um proxy próprio (Cloudflare Worker), que só repassa os mesmos arquivos públicos da CVM e do BC, sem guardar nada.</li>
       <li>Ferramenta educacional — confira os dados oficiais do fundo (lâmina, extrato) antes de qualquer decisão de investimento.</li>
     </ul>
   </div>
@@ -311,7 +311,7 @@
   // ---------------- Fetch com fallback de CORS ----------------
   // A CVM e (às vezes) o Banco Central não liberam CORS para chamadas de
   // navegador; quando o fetch direto falha, tentamos via um proxy público.
-  const CORS_PROXY = 'https://api.allorigins.win/raw?url=';
+  const CORS_PROXY = 'https://fundos.raphambello.workers.dev/?url=';
   async function fetchWithCorsFallback(url, init){
     let directErr;
     try{
