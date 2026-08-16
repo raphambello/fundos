@@ -94,6 +94,7 @@
   .fund-card .meta{ font-size:11.5px; color:var(--ink-muted); font-family:var(--font-mono); }
   .fund-card button{ flex-shrink:0; }
   .color-dot{ display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:2px; flex-shrink:0; margin-top:5px; }
+  .badge{ display:inline-block; font-family:var(--font-mono); font-size:10px; padding:2px 7px; border-radius:20px; background:var(--surface-2); color:var(--ink-muted); border:1px solid var(--line); margin-top:5px; }
 
   .btn{ font-family:var(--font-body); font-size:13px; font-weight:600; padding:9px 16px; border-radius:7px; border:1px solid var(--line); background:var(--surface-2); color:var(--ink); cursor:pointer; }
   .btn:hover{ border-color:var(--ink-faint); }
@@ -209,7 +210,8 @@
       <h2>Resultado — <span id="resFundName"></span></h2>
       <div class="card-sub" id="resPeriod"></div>
       <div class="stat-row">
-        <div class="stat"><div class="k">Retorno acumulado</div><div class="v num" id="oRetorno">—</div></div>
+        <div class="stat"><div class="k">Retorno acumulado (bruto)</div><div class="v num" id="oRetorno">—</div></div>
+        <div class="stat"><div class="k">Retorno líquido de come-cotas (estim.)</div><div class="v num" id="oRetornoLiquido">—</div><div class="d" id="oRegime">—</div></div>
         <div class="stat"><div class="k">% do CDI no período</div><div class="v num" id="oPctCdi">—</div></div>
         <div class="stat"><div class="k">Volatilidade anualizada</div><div class="v num" id="oVol">—</div></div>
         <div class="stat"><div class="k">Sharpe (vs CDI)</div><div class="v num" id="oSharpe">—</div></div>
@@ -226,8 +228,9 @@
         <svg class="chart" id="cumSvg" viewBox="0 0 800 260" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Gráfico de linha do retorno acumulado do fundo comparado ao CDI"></svg>
       </div>
       <div class="legend">
-        <span class="item"><span class="sw fundo"></span>fundo</span>
+        <span class="item"><span class="sw fundo"></span>fundo (bruto)</span>
         <span class="item"><span class="sw cdi"></span>CDI</span>
+        <span class="item hidden" id="legendLiquido"><span class="sw" style="border-top:1px dashed var(--accent);height:0;"></span>líquido de come-cotas (estim.)</span>
       </div>
 
       <h2 style="margin-top:24px;">Drawdown</h2>
@@ -266,7 +269,8 @@
       <li>Capture ratio compara retornos mensais compostos do fundo e do CDI nos meses em que o CDI foi positivo (upside) e negativo (downside). Como o CDI raramente é negativo no Brasil, o downside capture costuma ficar indefinido — isso não é um erro do cálculo.</li>
       <li>Tudo roda no seu navegador: nenhum dado é enviado para um servidor próprio. Os arquivos da CVM trazem todos os fundos do país por mês, então o primeiro cálculo de um novo fundo ou período pode demorar e consumir alguns MB — resultados ficam em cache local para consultas futuras ao mesmo fundo.</li>
       <li>O site da CVM (e às vezes o do Banco Central) não libera acesso direto por navegador — quando isso acontece, a busca passa automaticamente por um proxy próprio (Cloudflare Worker), que só repassa os mesmos arquivos públicos da CVM e do BC, sem guardar nada.</li>
-      <li>Ferramenta educacional — confira os dados oficiais do fundo (lâmina, extrato) antes de qualquer decisão de investimento.</li>
+      <li><b>Retorno líquido de come-cotas (estimado).</b> O come-cotas não muda o valor da cota, só a quantidade de cotas do investidor — por isso simulamos o "corte" no último dia útil de maio e novembro (15% sobre o ganho acumulado desde o último evento, ou 20% se o fundo for classificado como curto prazo pela CVM). Fundos de ações e fundos de previdência (identificados pelo tipo de fundo na CVM e por nomes com "Prev", "PGBL" ou "VGBL") não sofrem come-cotas, então o líquido estimado é igual ao bruto — essa é a base pra comparar a mesma estratégia na versão tradicional (com come-cotas) e na previdência (sem). A classificação é automática e pode errar em casos atípicos; não inclui o IR pago no resgate final, que ainda incide sobre o saldo em ambos os casos.</li>
+      <li>Ferramenta educacional — confira os dados oficiais do fundo (lâmina, extrato, regulamento) antes de qualquer decisão de investimento.</li>
     </ul>
   </div>
 
@@ -379,6 +383,8 @@
     const idxNome = findColIdx(header, cols.nome[0], cols.nome[1]);
     const idxSit = findColIdx(header, cols.sit[0], cols.sit[1]);
     const idxClasse = cols.classe ? findColIdx(header, cols.classe[0], cols.classe[1]) : -1;
+    const idxTipo = cols.tipo ? findColIdx(header, cols.tipo[0], cols.tipo[1]) : -1;
+    const idxTribLp = cols.tribLp ? findColIdx(header, cols.tribLp[0], cols.tribLp[1]) : -1;
     if(idxCnpj<0 || idxNome<0) throw new Error('Não encontrei as colunas de CNPJ/nome em um dos cadastros da CVM — o formato do arquivo pode ter mudado.');
     const out=[];
     for(let i=1;i<lines.length;i++){
@@ -391,7 +397,9 @@
       out.push({
         cnpj: c[idxCnpj].trim(),
         nome: c[idxNome].trim(),
-        classe: idxClasse>=0 ? c[idxClasse].trim() : '',
+        classe: idxClasse>=0 && c.length>idxClasse ? c[idxClasse].trim() : '',
+        tipoFundo: idxTipo>=0 && c.length>idxTipo ? c[idxTipo].trim() : '',
+        tribLongoPrazo: idxTribLp>=0 && c.length>idxTribLp ? c[idxTribLp].trim() : '',
         sit,
       });
     }
@@ -404,6 +412,8 @@
       nome: ['DENOM_SOCIAL','DENOM'],
       sit: ['SIT','SIT'],
       classe: ['CLASSE','CLASSE'],
+      tipo: ['TP_FUNDO','TP_FUNDO'],
+      tribLp: ['TRIB_LPRAZO','TRIB_LPRAZO'],
     });
   }
 
@@ -412,8 +422,63 @@
       cnpj: ['CNPJ_CLASSE','CNPJ'],
       nome: ['DENOMINACAO_SOCIAL','DENOM'],
       sit: ['SITUACAO','SIT'],
-      classe: ['TIPO_CLASSE','TIPO_CLASSE'],
+      classe: ['CLASSIFICACAO_ANBIMA','CLASSIFICACAO'],
+      tipo: ['TIPO_CLASSE','TIPO_CLASSE'],
+      tribLp: ['TRIBUTACAO_LONGO_PRAZO','TRIBUTACAO_LONGO_PRAZO'],
     });
+  }
+
+  // ---------------- Regime tributário (come-cotas / previdência / isento) ----------------
+  // Estimativa a partir de metadados da CVM + convenção de nome comercial —
+  // não é garantido, sempre confira o regime real do fundo antes de decidir.
+  function detectRegime(f){
+    const nameU = normalize(f.nome||'');
+    const classeU = normalize(f.classe||'');
+    const isAcoes = /\bacoes?\b/.test(classeU) || /\bacoes?\b/.test(nameU);
+    const isPrevidencia = /\b(prev|previdencia|pgbl|vgbl)\b/.test(nameU) || (f.tipoFundo||'').toUpperCase()==='FIE';
+    if(isPrevidencia) return {tipo:'previdencia', comeCotas:false};
+    if(isAcoes) return {tipo:'acoes', comeCotas:false};
+    const trib = (f.tribLongoPrazo||'').trim().toUpperCase();
+    const rateAssumed = trib==='';
+    const longoPrazo = rateAssumed ? true : /^(S|SIM|LONGO)/.test(trib);
+    return {tipo:'come_cotas', comeCotas:true, rate: longoPrazo?0.15:0.20, rateAssumed};
+  }
+
+  function regimeLabel(r){
+    if(r.tipo==='previdencia') return 'previdência · sem come-cotas';
+    if(r.tipo==='acoes') return 'ações · sem come-cotas';
+    return `come-cotas ${(r.rate*100).toFixed(0)}%${r.rateAssumed?' (assumido)':''}`;
+  }
+
+  // Come-cotas: no último dia útil de maio e novembro, a Receita "resgata"
+  // parte das cotas do investidor pra pagar IR antecipado sobre o ganho
+  // acumulado desde o último evento — a cota em si não muda de valor, só a
+  // quantidade que o investidor tem. Simulamos isso como um "corte" na curva.
+  function applyComeCotas(dates, values, rate){
+    // net[resetIdx] guarda o valor líquido (pós-imposto) no último "corte";
+    // entre cortes, o líquido cresce na mesma proporção do valor bruto
+    // (só a quantidade de cotas muda no come-cotas, não o preço da cota).
+    const net = new Array(values.length);
+    net[0] = values[0];
+    let resetIdx = 0;
+    for(let i=1;i<values.length;i++){
+      const ratio = values[i]/values[resetIdx];
+      const gain = ratio - 1;
+      net[i] = net[resetIdx] * (gain>0 ? (ratio - rate*gain) : ratio);
+      const d = new Date(dates[i]);
+      const month = d.getMonth(); // 4 = maio, 10 = novembro
+      const isEventMonth = month===4 || month===10;
+      const isLastOfMonth = (i===values.length-1) || (new Date(dates[i+1]).getMonth() !== month);
+      if(isEventMonth && isLastOfMonth) resetIdx = i;
+    }
+    return net;
+  }
+
+  function computeNetOfComeCotas(fund, dates, values){
+    const regime = detectRegime(fund);
+    if(!regime.comeCotas) return {regime, netCurve: values, netRetorno: values[values.length-1]-1};
+    const netCurve = applyComeCotas(dates, values, regime.rate);
+    return {regime, netCurve, netRetorno: netCurve[netCurve.length-1]-1};
   }
 
   async function fetchBytesWithProgress(url, onProgress){
@@ -710,11 +775,11 @@
   const NS='http://www.w3.org/2000/svg';
   const el=(tag,attrs)=>{ const e=document.createElementNS(NS,tag); for(const k in attrs) e.setAttribute(k,attrs[k]); return e; };
 
-  function renderCumulativeChart(dates, fundValues, cdiJoinedDates, cdiValues){
+  function renderCumulativeChart(dates, fundValues, cdiValues, netValues){
     const svg = $('cumSvg'); svg.innerHTML='';
     const W=800,H=260,padL=44,padR=10,padT=14,padB=26;
     const chartW=W-padL-padR, chartH=H-padT-padB;
-    const allVals = fundValues.concat(cdiValues);
+    const allVals = fundValues.concat(cdiValues).concat(netValues||[]);
     let maxV=Math.max(...allVals), minV=Math.min(...allVals,1);
     const span=Math.max(maxV-minV,0.001); maxV+=span*0.08; minV-=span*0.08;
     const n = fundValues.length;
@@ -730,6 +795,7 @@
 
     const pathFor = vals => vals.map((v,i)=> (i===0?'M':'L')+xFor(i).toFixed(1)+','+yFor(v).toFixed(1)).join(' ');
     svg.appendChild(el('path',{class:'line-cdi', d:pathFor(cdiValues)}));
+    if(netValues) svg.appendChild(el('path',{d:pathFor(netValues), style:'fill:none;stroke:var(--accent);stroke-width:1.4;stroke-dasharray:5,3;opacity:0.75'}));
     svg.appendChild(el('path',{class:'line-fundo', d:pathFor(fundValues)}));
 
     [0, Math.floor((n-1)/2), n-1].forEach(i=>{
@@ -842,7 +908,8 @@
       const card = document.createElement('div');
       card.className='fund-card';
       const dot = selectedFunds.length>1 ? `<span class="color-dot" style="background:${FUND_COLORS[i%FUND_COLORS.length]}"></span>` : '';
-      card.innerHTML = `<div style="display:flex;gap:8px;">${dot}<div><div class="name">${escapeHtml(f.nome)}</div><div class="meta">${escapeHtml(f.cnpj)}${f.classe?(' · '+escapeHtml(f.classe)):''}</div></div></div>
+      const regime = detectRegime(f);
+      card.innerHTML = `<div style="display:flex;gap:8px;">${dot}<div><div class="name">${escapeHtml(f.nome)}</div><div class="meta">${escapeHtml(f.cnpj)}${f.classe?(' · '+escapeHtml(f.classe)):''}</div><span class="badge">${escapeHtml(regimeLabel(regime))}</span></div></div>
         <button class="btn btn-ghost">remover</button>`;
       card.querySelector('button').addEventListener('click', () => removeFund(f.cnpj));
       wrap.appendChild(card);
@@ -929,6 +996,7 @@
 
     const oRetorno = $('oRetorno'); oRetorno.textContent = fmtPct(m.retorno); oRetorno.className='v num '+(m.retorno>=0?'gain':'loss');
     $('oPctCdi').textContent = m.pctCdi==null ? '—' : fmtPctPlain(m.pctCdi*100,0);
+
     $('oVol').textContent = m.ss.volAnnual==null ? '—' : fmtPctPlain(m.ss.volAnnual*100);
     $('oSharpe').textContent = fmtNum(m.ss.sharpe);
     $('oSortino').textContent = fmtNum(m.ss.sortino);
@@ -948,7 +1016,15 @@
     const cdiValues = cumulativeCurve(m.joined.map(j=>j.rb));
     const fundValuesAligned = cumulativeCurve(m.joined.map(j=>j.rf));
     const alignedDates = [m.joined[0] ? fundRows.find(r=>r.date===m.joined[0].date) : fundRows[0]].map(r=>r?r.date:fundRows[0].date).concat(m.joined.map(j=>j.date));
-    renderCumulativeChart(alignedDates, fundValuesAligned, alignedDates, cdiValues);
+
+    const netInfo = computeNetOfComeCotas(fund, alignedDates, fundValuesAligned);
+    const oRetLiq = $('oRetornoLiquido');
+    oRetLiq.textContent = fmtPct(netInfo.netRetorno);
+    oRetLiq.className = 'v num ' + (netInfo.netRetorno>=0?'gain':'loss');
+    $('oRegime').textContent = regimeLabel(netInfo.regime);
+    $('legendLiquido').classList.toggle('hidden', !netInfo.regime.comeCotas);
+
+    renderCumulativeChart(alignedDates, fundValuesAligned, cdiValues, netInfo.regime.comeCotas ? netInfo.netCurve : null);
     renderDrawdownChart(m.dates, m.dd.dd);
   }
 
@@ -960,8 +1036,15 @@
     const starts = computed.map(c=>c.fundRows[0].date), ends = computed.map(c=>c.fundRows[c.fundRows.length-1].date);
     $('cmpPeriod').textContent = `${fmtDateBR(starts.reduce((a,b)=>a<b?a:b))} a ${fmtDateBR(ends.reduce((a,b)=>a>b?a:b))} · ${computed.length} fundos`;
 
+    computed.forEach(c => {
+      const dates_i = c.m.joined.map(j=>j.date);
+      const gross_i = cumulativeCurve(c.m.joined.map(j=>j.rf));
+      c.net = computeNetOfComeCotas(c.fund, dates_i, gross_i);
+    });
+
     const rowsDef = [
-      {k:'Retorno acumulado', get:c=>fmtPct(c.m.retorno), cls:c=>c.m.retorno>=0?'gain':'loss'},
+      {k:'Retorno acumulado (bruto)', get:c=>fmtPct(c.m.retorno), cls:c=>c.m.retorno>=0?'gain':'loss'},
+      {k:'Retorno líquido de come-cotas (estim.)', get:c=>fmtPct(c.net.netRetorno)+' · '+regimeLabel(c.net.regime), cls:c=>c.net.netRetorno>=0?'gain':'loss'},
       {k:'% do CDI no período', get:c=>c.m.pctCdi==null?'—':fmtPctPlain(c.m.pctCdi*100,0)},
       {k:'Volatilidade anualizada', get:c=>c.m.ss.volAnnual==null?'—':fmtPctPlain(c.m.ss.volAnnual*100)},
       {k:'Sharpe (vs CDI)', get:c=>fmtNum(c.m.ss.sharpe)},
@@ -983,9 +1066,11 @@
     renderMultiCumulativeChart(computed);
     renderMultiDrawdownChart(computed);
 
+    const anyComeCotas = computed.some(c=>c.net.regime.comeCotas);
     $('cmpCumLegend').innerHTML = computed.map((c,i)=>
       `<span class="item"><span class="sw" style="background:${FUND_COLORS[i%FUND_COLORS.length]}"></span>${escapeHtml(c.fund.nome)}</span>`
-    ).join('') + '<span class="item"><span class="sw cdi"></span>CDI</span>';
+    ).join('') + '<span class="item"><span class="sw cdi"></span>CDI</span>'
+      + (anyComeCotas ? '<span class="item"><span class="sw" style="border-top:1px dashed var(--ink-muted);height:0;"></span>tracejado = líquido de come-cotas (estim.)</span>' : '');
     $('cmpDdLegend').innerHTML = computed.map((c,i)=>
       `<span class="item"><span class="sw" style="background:${FUND_COLORS[i%FUND_COLORS.length]}"></span>${escapeHtml(c.fund.nome)}</span>`
     ).join('');
@@ -999,7 +1084,8 @@
     const series = computed.map(c => cumulativeCurve(c.m.joined.map(j=>j.rf)));
     const longest = computed.reduce((a,c)=>c.m.joined.length>a.m.joined.length?c:a, computed[0]);
     const cdiSeries = cumulativeCurve(longest.m.joined.map(j=>j.rb));
-    const allVals = series.flat().concat(cdiSeries);
+    const netVals = computed.filter(c=>c.net && c.net.regime.comeCotas).flatMap(c=>c.net.netCurve);
+    const allVals = series.flat().concat(cdiSeries).concat(netVals);
     let maxV=Math.max(...allVals), minV=Math.min(...allVals,1);
     const span=Math.max(maxV-minV,0.001); maxV+=span*0.08; minV-=span*0.08;
     const yFor = v => padT + (maxV-v)/(maxV-minV)*chartH;
@@ -1015,7 +1101,11 @@
     const pathFor = vals => vals.map((v,i)=> (i===0?'M':'L')+xForSeries(vals,i).toFixed(1)+','+yFor(v).toFixed(1)).join(' ');
     svg.appendChild(el('path',{class:'line-cdi', d:pathFor(cdiSeries)}));
     series.forEach((vals,i)=>{
-      svg.appendChild(el('path',{d:pathFor(vals), fill:'none', stroke:FUND_COLORS[i%FUND_COLORS.length], 'stroke-width':'1.8'}));
+      svg.appendChild(el('path',{d:pathFor(vals), style:`fill:none;stroke:${FUND_COLORS[i%FUND_COLORS.length]};stroke-width:1.8`}));
+      const net = computed[i].net;
+      if(net && net.regime.comeCotas){
+        svg.appendChild(el('path',{d:pathFor(net.netCurve), style:`fill:none;stroke:${FUND_COLORS[i%FUND_COLORS.length]};stroke-width:1.3;stroke-dasharray:5,3;opacity:0.75`}));
+      }
     });
 
     const refDates = longest.m.joined.map(j=>j.date);
