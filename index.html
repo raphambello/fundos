@@ -89,9 +89,11 @@
   .search-empty{ padding:10px 12px; font-size:12.5px; color:var(--ink-muted); }
 
   .fund-card{ display:flex; justify-content:space-between; align-items:flex-start; gap:12px; padding:14px 16px; background:var(--accent-wash); border:1px solid var(--line); border-radius:8px; }
+  .fund-card + .fund-card{ margin-top:8px; }
   .fund-card .name{ font-weight:600; font-size:14px; margin-bottom:3px; }
   .fund-card .meta{ font-size:11.5px; color:var(--ink-muted); font-family:var(--font-mono); }
   .fund-card button{ flex-shrink:0; }
+  .color-dot{ display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:2px; flex-shrink:0; margin-top:5px; }
 
   .btn{ font-family:var(--font-body); font-size:13px; font-weight:600; padding:9px 16px; border-radius:7px; border:1px solid var(--line); background:var(--surface-2); color:var(--ink); cursor:pointer; }
   .btn:hover{ border-color:var(--ink-faint); }
@@ -139,8 +141,17 @@
   .legend .item{ display:flex; align-items:center; gap:6px; }
   .legend .sw{ width:14px; height:2px; }
   .legend .sw.fundo{ background:var(--accent); }
-  .legend .sw.cdi{ background:var(--ink-faint); }
+  .legend .sw.cdi{ background:var(--ink-faint); border-top:1px dashed var(--ink-faint); height:0; }
   .legend .sw.dd{ background:var(--loss); }
+
+  .table-wrap{ overflow-x:auto; margin-top:10px; }
+  table.cmp-table{ width:100%; border-collapse:collapse; font-size:12.5px; min-width:520px; }
+  table.cmp-table th{ text-align:left; font-size:11px; font-weight:600; padding:0 12px 8px 0; border-bottom:1px solid var(--line); white-space:nowrap; }
+  table.cmp-table th:first-child{ min-width:150px; }
+  table.cmp-table td{ padding:7px 12px 7px 0; border-bottom:1px solid var(--line-soft); font-family:var(--font-mono); white-space:nowrap; }
+  table.cmp-table td:first-child{ font-family:var(--font-body); color:var(--ink-muted); white-space:normal; }
+  table.cmp-table td.gain{ color:var(--gain); }
+  table.cmp-table td.loss{ color:var(--loss); }
 
   .note{ margin-top:20px; padding:14px 16px; background:var(--surface); border:1px solid var(--line); border-left:3px solid var(--accent); border-radius:0 8px 8px 0; font-size:12.5px; color:var(--ink-muted); line-height:1.65; }
   .note b{ color:var(--ink); }
@@ -158,12 +169,12 @@
   <header class="top">
     <div class="eyebrow">Fundos de investimento · métricas</div>
     <h1>Analisador de métricas de fundos</h1>
-    <p class="sub">Busca a cota histórica de um fundo brasileiro direto na CVM e a taxa CDI direto no Banco Central — tudo roda no seu navegador, sem servidor. Calcula Drawdown, Duração do Drawdown, Capture Ratio, Sharpe e Sortino.</p>
+    <p class="sub">Busca a cota histórica de fundos brasileiros direto na CVM e a taxa CDI direto no Banco Central — tudo roda no seu navegador, sem servidor. Calcula Drawdown, Duração do Drawdown, Capture Ratio, Sharpe e Sortino, com opção de comparar até 4 fundos.</p>
   </header>
 
   <div class="card">
-    <h2>1. Escolha o fundo</h2>
-    <div class="card-sub">Digite parte do nome ou o CNPJ. Na primeira busca, a lista de fundos da CVM é baixada e fica salva no navegador para as próximas vezes.</div>
+    <h2>1. Escolha o(s) fundo(s)</h2>
+    <div class="card-sub">Digite parte do nome ou o CNPJ. Selecione mais de um fundo pra comparar (até 4). Na primeira busca, a lista de fundos da CVM é baixada e fica salva no navegador para as próximas vezes.</div>
     <div class="field">
       <label>Nome ou CNPJ do fundo</label>
       <input type="text" id="fundSearch" placeholder="Ex: Itaú Selic, BB Ações, ou 00.000.000/0000-00" autocomplete="off">
@@ -172,15 +183,7 @@
     <div class="status-line" id="searchStatus"></div>
     <div class="progress-bar" id="searchProgress"><div class="progress-fill" id="searchProgressFill"></div></div>
 
-    <div id="fundCardWrap" class="hidden" style="margin-top:14px;">
-      <div class="fund-card">
-        <div>
-          <div class="name" id="selName">—</div>
-          <div class="meta" id="selMeta">—</div>
-        </div>
-        <button class="btn btn-ghost" id="btnTrocar">trocar</button>
-      </div>
-    </div>
+    <div id="fundCardWrap" class="hidden" style="margin-top:14px;"></div>
   </div>
 
   <div class="card" id="periodCard" style="display:none;">
@@ -194,41 +197,65 @@
     </div>
     <div class="actions-row">
       <button class="btn btn-primary" id="btnBuscar">Calcular métricas</button>
-      <button class="btn btn-ghost" id="btnLimparCache" title="Apaga os dados salvos no navegador para este fundo">limpar cache deste fundo</button>
+      <button class="btn btn-ghost" id="btnLimparCache" title="Apaga os dados salvos no navegador para os fundos selecionados">limpar cache dos fundos selecionados</button>
     </div>
     <div class="status-line" id="fetchStatus"></div>
     <div class="progress-bar" id="fetchProgress"><div class="progress-fill" id="fetchProgressFill"></div></div>
   </div>
 
   <div class="card" id="resultsCard" style="display:none;">
-    <h2>Resultado — <span id="resFundName"></span></h2>
-    <div class="card-sub" id="resPeriod"></div>
-    <div class="stat-row">
-      <div class="stat"><div class="k">Retorno acumulado</div><div class="v num" id="oRetorno">—</div></div>
-      <div class="stat"><div class="k">% do CDI no período</div><div class="v num" id="oPctCdi">—</div></div>
-      <div class="stat"><div class="k">Volatilidade anualizada</div><div class="v num" id="oVol">—</div></div>
-      <div class="stat"><div class="k">Sharpe (vs CDI)</div><div class="v num" id="oSharpe">—</div></div>
-      <div class="stat"><div class="k">Sortino (vs CDI)</div><div class="v num" id="oSortino">—</div></div>
-      <div class="stat"><div class="k">Máx. drawdown</div><div class="v num" id="oMaxDD">—</div></div>
-      <div class="stat"><div class="k">Duração do drawdown</div><div class="v num" id="oDDDur">—</div><div class="d" id="oDDDurDetail">—</div></div>
-      <div class="stat"><div class="k">Upside capture</div><div class="v num" id="oUpCap">—</div></div>
-      <div class="stat"><div class="k">Downside capture</div><div class="v num" id="oDownCap">—</div></div>
-      <div class="stat"><div class="k">Capture ratio</div><div class="v num" id="oCapRatio">—</div><div class="d" id="oCapNote"></div></div>
+
+    <div id="singleResult">
+      <h2>Resultado — <span id="resFundName"></span></h2>
+      <div class="card-sub" id="resPeriod"></div>
+      <div class="stat-row">
+        <div class="stat"><div class="k">Retorno acumulado</div><div class="v num" id="oRetorno">—</div></div>
+        <div class="stat"><div class="k">% do CDI no período</div><div class="v num" id="oPctCdi">—</div></div>
+        <div class="stat"><div class="k">Volatilidade anualizada</div><div class="v num" id="oVol">—</div></div>
+        <div class="stat"><div class="k">Sharpe (vs CDI)</div><div class="v num" id="oSharpe">—</div></div>
+        <div class="stat"><div class="k">Sortino (vs CDI)</div><div class="v num" id="oSortino">—</div></div>
+        <div class="stat"><div class="k">Máx. drawdown</div><div class="v num" id="oMaxDD">—</div></div>
+        <div class="stat"><div class="k">Duração do drawdown</div><div class="v num" id="oDDDur">—</div><div class="d" id="oDDDurDetail">—</div></div>
+        <div class="stat"><div class="k">Upside capture</div><div class="v num" id="oUpCap">—</div></div>
+        <div class="stat"><div class="k">Downside capture</div><div class="v num" id="oDownCap">—</div></div>
+        <div class="stat"><div class="k">Capture ratio</div><div class="v num" id="oCapRatio">—</div><div class="d" id="oCapNote"></div></div>
+      </div>
+
+      <h2 style="margin-top:24px;">Retorno acumulado — fundo vs CDI</h2>
+      <div class="chart-wrap">
+        <svg class="chart" id="cumSvg" viewBox="0 0 800 260" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Gráfico de linha do retorno acumulado do fundo comparado ao CDI"></svg>
+      </div>
+      <div class="legend">
+        <span class="item"><span class="sw fundo"></span>fundo</span>
+        <span class="item"><span class="sw cdi"></span>CDI</span>
+      </div>
+
+      <h2 style="margin-top:24px;">Drawdown</h2>
+      <div class="chart-wrap">
+        <svg class="chart" id="ddSvg" viewBox="0 0 800 180" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Gráfico de área do drawdown do fundo ao longo do tempo"></svg>
+      </div>
     </div>
 
-    <h2 style="margin-top:24px;">Retorno acumulado — fundo vs CDI</h2>
-    <div class="chart-wrap">
-      <svg class="chart" id="cumSvg" viewBox="0 0 800 260" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Gráfico de linha do retorno acumulado do fundo comparado ao CDI"></svg>
-    </div>
-    <div class="legend">
-      <span class="item"><span class="sw fundo"></span>fundo</span>
-      <span class="item"><span class="sw cdi"></span>CDI</span>
+    <div id="comparisonResult" class="hidden">
+      <h2>Comparação de fundos</h2>
+      <div class="card-sub" id="cmpPeriod"></div>
+      <div class="table-wrap">
+        <table class="cmp-table" id="cmpTable"></table>
+      </div>
+
+      <h2 style="margin-top:24px;">Retorno acumulado</h2>
+      <div class="chart-wrap">
+        <svg class="chart" id="cmpCumSvg" viewBox="0 0 800 260" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Gráfico de linha do retorno acumulado de cada fundo comparado ao CDI"></svg>
+      </div>
+      <div class="legend" id="cmpCumLegend"></div>
+
+      <h2 style="margin-top:24px;">Drawdown</h2>
+      <div class="chart-wrap">
+        <svg class="chart" id="cmpDdSvg" viewBox="0 0 800 180" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Gráfico de linha do drawdown de cada fundo"></svg>
+      </div>
+      <div class="legend" id="cmpDdLegend"></div>
     </div>
 
-    <h2 style="margin-top:24px;">Drawdown</h2>
-    <div class="chart-wrap">
-      <svg class="chart" id="ddSvg" viewBox="0 0 800 180" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Gráfico de área do drawdown do fundo ao longo do tempo"></svg>
-    </div>
   </div>
 
   <div class="note">
@@ -256,6 +283,8 @@
   const fmtNum = (v,d=2) => v==null || !isFinite(v) ? '—' : v.toLocaleString('pt-BR',{minimumFractionDigits:d,maximumFractionDigits:d});
   const fmtDateBR = iso => { const [y,m,d]=iso.split('-'); return `${d}/${m}/${y}`; };
   const normalize = s => (s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
+  const escapeHtml = s => (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const FUND_COLORS = ['#b4592a', '#3b82c4', '#8a5fbf', '#2f9e6e'];
 
   // ---------------- IndexedDB helper ----------------
   const DB_NAME='fundosApp', DB_VER=1;
@@ -740,7 +769,8 @@
   }
 
   // ---------------- UI wiring ----------------
-  let selectedFund = null;
+  const MAX_FUNDS = 4;
+  let selectedFunds = [];
   let lookbackMonths = 12;
 
   const searchInput = $('fundSearch');
@@ -754,10 +784,14 @@
       try{
         await ensureFundIndex();
       } catch(e){ return; }
-      const matches = searchFunds(q);
+      const matches = searchFunds(q).filter(f => !selectedFunds.some(s=>s.cnpj===f.cnpj));
       resultsEl.innerHTML='';
       if(q.trim().length<2){ resultsEl.classList.remove('open'); return; }
-      if(matches.length===0){
+      if(selectedFunds.length>=MAX_FUNDS){
+        const d = document.createElement('div');
+        d.className='search-empty'; d.textContent=`Máximo de ${MAX_FUNDS} fundos por comparação — remova um pra adicionar outro.`;
+        resultsEl.appendChild(d);
+      } else if(matches.length===0){
         const d = document.createElement('div');
         d.className='search-empty'; d.textContent='Nenhum fundo ativo encontrado.';
         resultsEl.appendChild(d);
@@ -765,8 +799,8 @@
         matches.forEach(f=>{
           const item = document.createElement('div');
           item.className='search-item';
-          item.innerHTML = `<div class="name">${f.nome}</div><div class="cnpj">${f.cnpj}${f.classe?(' · '+f.classe):''}</div>`;
-          item.addEventListener('click', () => selectFund(f));
+          item.innerHTML = `<div class="name">${escapeHtml(f.nome)}</div><div class="cnpj">${escapeHtml(f.cnpj)}${f.classe?(' · '+escapeHtml(f.classe)):''}</div>`;
+          item.addEventListener('click', () => addFund(f));
           resultsEl.appendChild(item);
         });
       }
@@ -778,26 +812,48 @@
     if(!resultsEl.contains(e.target) && e.target!==searchInput) resultsEl.classList.remove('open');
   });
 
-  function selectFund(f){
-    selectedFund = f;
+  function addFund(f){
+    if(selectedFunds.some(x=>x.cnpj===f.cnpj) || selectedFunds.length>=MAX_FUNDS) return;
+    selectedFunds.push(f);
+    renderSelectedFunds();
     resultsEl.classList.remove('open');
     searchInput.value='';
-    $('selName').textContent = f.nome;
-    $('selMeta').textContent = f.cnpj + (f.classe? ' · '+f.classe : '');
-    $('fundCardWrap').classList.remove('hidden');
     $('periodCard').style.display='';
     $('resultsCard').style.display='none';
     $('fetchStatus').textContent='';
     $('fetchStatus').className='status-line';
   }
 
-  $('btnTrocar').addEventListener('click', () => {
-    selectedFund=null;
-    $('fundCardWrap').classList.add('hidden');
-    $('periodCard').style.display='none';
-    $('resultsCard').style.display='none';
-    searchInput.focus();
-  });
+  function removeFund(cnpj){
+    selectedFunds = selectedFunds.filter(x=>x.cnpj!==cnpj);
+    renderSelectedFunds();
+    if(selectedFunds.length===0){
+      $('periodCard').style.display='none';
+      $('resultsCard').style.display='none';
+    }
+  }
+
+  function renderSelectedFunds(){
+    const wrap = $('fundCardWrap');
+    wrap.innerHTML='';
+    if(selectedFunds.length===0){ wrap.classList.add('hidden'); return; }
+    wrap.classList.remove('hidden');
+    selectedFunds.forEach((f,i)=>{
+      const card = document.createElement('div');
+      card.className='fund-card';
+      const dot = selectedFunds.length>1 ? `<span class="color-dot" style="background:${FUND_COLORS[i%FUND_COLORS.length]}"></span>` : '';
+      card.innerHTML = `<div style="display:flex;gap:8px;">${dot}<div><div class="name">${escapeHtml(f.nome)}</div><div class="meta">${escapeHtml(f.cnpj)}${f.classe?(' · '+escapeHtml(f.classe)):''}</div></div></div>
+        <button class="btn btn-ghost">remover</button>`;
+      card.querySelector('button').addEventListener('click', () => removeFund(f.cnpj));
+      wrap.appendChild(card);
+    });
+    const hint = document.createElement('div');
+    hint.className='hint'; hint.style.marginTop='10px';
+    hint.textContent = selectedFunds.length>=MAX_FUNDS
+      ? `Máximo de ${MAX_FUNDS} fundos por comparação.`
+      : `${selectedFunds.length}/${MAX_FUNDS} selecionado(s) — adicione mais pra comparar, ou calcule só com este(s).`;
+    wrap.appendChild(hint);
+  }
 
   $('lookbackSeg').addEventListener('click', (e) => {
     const btn = e.target.closest('button'); if(!btn) return;
@@ -807,14 +863,14 @@
   });
 
   $('btnLimparCache').addEventListener('click', async () => {
-    if(!selectedFund) return;
-    await idbDeletePrefix('cotas', selectedFund.cnpj+'|');
+    if(!selectedFunds.length) return;
+    for(const f of selectedFunds) await idbDeletePrefix('cotas', f.cnpj+'|');
     $('fetchStatus').className='status-line';
-    $('fetchStatus').textContent='Cache deste fundo apagado.';
+    $('fetchStatus').textContent = selectedFunds.length>1 ? 'Cache dos fundos selecionados apagado.' : 'Cache deste fundo apagado.';
   });
 
   $('btnBuscar').addEventListener('click', async () => {
-    if(!selectedFund) return;
+    if(!selectedFunds.length) return;
     const btn = $('btnBuscar'); btn.disabled=true;
     const statusEl = $('fetchStatus'); statusEl.className='status-line';
     const progEl = $('fetchProgress'), fillEl = $('fetchProgressFill');
@@ -822,25 +878,38 @@
     $('resultsCard').style.display='none';
     try{
       const months = monthsBack(lookbackMonths);
-      const fundRows = await fetchFundQuotas(selectedFund.cnpj, months, (done,total,ym)=>{
-        fillEl.style.width = (done/total*100).toFixed(0)+'%';
-        statusEl.textContent = `Buscando cota de ${ym.slice(4,6)}/${ym.slice(0,4)}… (${done}/${total})`;
-      });
-      if(fundRows.length<15){
-        statusEl.className='status-line err';
-        statusEl.textContent = 'Poucos dados encontrados para esse fundo no período (fundo novo, sem CNPJ correspondente nos arquivos, ou período curto demais). Tente uma janela maior.';
-        return;
+      const results = [];
+      for(let fi=0; fi<selectedFunds.length; fi++){
+        const fund = selectedFunds[fi];
+        const fundRows = await fetchFundQuotas(fund.cnpj, months, (done,total,ym)=>{
+          const pctOverall = (fi + done/total) / selectedFunds.length;
+          fillEl.style.width = (pctOverall*100).toFixed(0)+'%';
+          statusEl.textContent = selectedFunds.length>1
+            ? `Fundo ${fi+1}/${selectedFunds.length} (${fund.nome}) — cota de ${ym.slice(4,6)}/${ym.slice(0,4)}… (${done}/${total})`
+            : `Buscando cota de ${ym.slice(4,6)}/${ym.slice(0,4)}… (${done}/${total})`;
+        });
+        if(fundRows.length<15){
+          statusEl.className='status-line err';
+          statusEl.textContent = `Poucos dados encontrados para "${fund.nome}" no período (fundo novo, sem CNPJ correspondente nos arquivos, ou período curto demais). Tente uma janela maior ou remova esse fundo.`;
+          return;
+        }
+        results.push({fund, fundRows});
       }
       statusEl.textContent = 'Buscando CDI no Banco Central…';
-      const cdiRows = await fetchCdi(fundRows[0].date, fundRows[fundRows.length-1].date);
+      const starts = results.map(r=>r.fundRows[0].date), ends = results.map(r=>r.fundRows[r.fundRows.length-1].date);
+      const cdiRows = await fetchCdi(starts.reduce((a,b)=>a<b?a:b), ends.reduce((a,b)=>a>b?a:b));
       if(cdiRows.length<10){
         statusEl.className='status-line err';
         statusEl.textContent = 'Não consegui obter a série do CDI no Banco Central para esse período.';
         return;
       }
-      const m = computeAll(fundRows, cdiRows);
-      renderResults(selectedFund, months, fundRows, cdiRows, m);
-      statusEl.textContent = `Pronto — ${fundRows.length} pregões carregados.`;
+      const computed = results.map(r => ({ fund:r.fund, fundRows:r.fundRows, m: computeAll(r.fundRows, cdiRows) }));
+      if(computed.length===1){
+        renderResults(computed[0].fund, months, computed[0].fundRows, cdiRows, computed[0].m);
+      } else {
+        renderComparison(computed);
+      }
+      statusEl.textContent = computed.length>1 ? `Pronto — ${computed.length} fundos carregados.` : `Pronto — ${computed[0].fundRows.length} pregões carregados.`;
     } catch(err){
       console.error(err);
       statusEl.className='status-line err';
@@ -853,6 +922,8 @@
 
   function renderResults(fund, months, fundRows, cdiRows, m){
     $('resultsCard').style.display='';
+    $('singleResult').classList.remove('hidden');
+    $('comparisonResult').classList.add('hidden');
     $('resFundName').textContent = fund.nome;
     $('resPeriod').textContent = `${fmtDateBR(fundRows[0].date)} a ${fmtDateBR(fundRows[fundRows.length-1].date)} · ${fundRows.length} pregões`;
 
@@ -879,6 +950,113 @@
     const alignedDates = [m.joined[0] ? fundRows.find(r=>r.date===m.joined[0].date) : fundRows[0]].map(r=>r?r.date:fundRows[0].date).concat(m.joined.map(j=>j.date));
     renderCumulativeChart(alignedDates, fundValuesAligned, alignedDates, cdiValues);
     renderDrawdownChart(m.dates, m.dd.dd);
+  }
+
+  function renderComparison(computed){
+    $('resultsCard').style.display='';
+    $('singleResult').classList.add('hidden');
+    $('comparisonResult').classList.remove('hidden');
+
+    const starts = computed.map(c=>c.fundRows[0].date), ends = computed.map(c=>c.fundRows[c.fundRows.length-1].date);
+    $('cmpPeriod').textContent = `${fmtDateBR(starts.reduce((a,b)=>a<b?a:b))} a ${fmtDateBR(ends.reduce((a,b)=>a>b?a:b))} · ${computed.length} fundos`;
+
+    const rowsDef = [
+      {k:'Retorno acumulado', get:c=>fmtPct(c.m.retorno), cls:c=>c.m.retorno>=0?'gain':'loss'},
+      {k:'% do CDI no período', get:c=>c.m.pctCdi==null?'—':fmtPctPlain(c.m.pctCdi*100,0)},
+      {k:'Volatilidade anualizada', get:c=>c.m.ss.volAnnual==null?'—':fmtPctPlain(c.m.ss.volAnnual*100)},
+      {k:'Sharpe (vs CDI)', get:c=>fmtNum(c.m.ss.sharpe)},
+      {k:'Sortino (vs CDI)', get:c=>fmtNum(c.m.ss.sortino)},
+      {k:'Máx. drawdown', get:c=>fmtPct(c.m.dd.maxDD), cls:()=>'loss'},
+      {k:'Duração do drawdown', get:c=>c.m.dd.diasAteFundo+' dias'},
+      {k:'Upside capture', get:c=>c.m.cap.upsideCapture==null?'N/D':fmtPctPlain(c.m.cap.upsideCapture*100,0)},
+      {k:'Downside capture', get:c=>c.m.cap.downsideCapture==null?'N/D':fmtPctPlain(c.m.cap.downsideCapture*100,0)},
+      {k:'Capture ratio', get:c=>c.m.cap.captureRatio==null?'N/D':fmtNum(c.m.cap.captureRatio)},
+    ];
+    const thead = '<thead><tr><th></th>' + computed.map((c,i)=>
+      `<th><span class="color-dot" style="background:${FUND_COLORS[i%FUND_COLORS.length]}"></span>${escapeHtml(c.fund.nome)}</th>`
+    ).join('') + '</tr></thead>';
+    const tbody = '<tbody>' + rowsDef.map(rd =>
+      '<tr><td>'+rd.k+'</td>' + computed.map(c => `<td class="${rd.cls?rd.cls(c):''}">${rd.get(c)}</td>`).join('') + '</tr>'
+    ).join('') + '</tbody>';
+    $('cmpTable').innerHTML = thead + tbody;
+
+    renderMultiCumulativeChart(computed);
+    renderMultiDrawdownChart(computed);
+
+    $('cmpCumLegend').innerHTML = computed.map((c,i)=>
+      `<span class="item"><span class="sw" style="background:${FUND_COLORS[i%FUND_COLORS.length]}"></span>${escapeHtml(c.fund.nome)}</span>`
+    ).join('') + '<span class="item"><span class="sw cdi"></span>CDI</span>';
+    $('cmpDdLegend').innerHTML = computed.map((c,i)=>
+      `<span class="item"><span class="sw" style="background:${FUND_COLORS[i%FUND_COLORS.length]}"></span>${escapeHtml(c.fund.nome)}</span>`
+    ).join('');
+  }
+
+  function renderMultiCumulativeChart(computed){
+    const svg = $('cmpCumSvg'); svg.innerHTML='';
+    const W=800,H=260,padL=44,padR=10,padT=14,padB=26;
+    const chartW=W-padL-padR, chartH=H-padT-padB;
+
+    const series = computed.map(c => cumulativeCurve(c.m.joined.map(j=>j.rf)));
+    const longest = computed.reduce((a,c)=>c.m.joined.length>a.m.joined.length?c:a, computed[0]);
+    const cdiSeries = cumulativeCurve(longest.m.joined.map(j=>j.rb));
+    const allVals = series.flat().concat(cdiSeries);
+    let maxV=Math.max(...allVals), minV=Math.min(...allVals,1);
+    const span=Math.max(maxV-minV,0.001); maxV+=span*0.08; minV-=span*0.08;
+    const yFor = v => padT + (maxV-v)/(maxV-minV)*chartH;
+    const xForSeries = (vals,i) => padL + (i/(vals.length-1))*chartW;
+
+    [minV, minV+(maxV-minV)/2, maxV].forEach(v=>{
+      const y=yFor(v);
+      svg.appendChild(el('line',{class:'grid-line',x1:padL,y1:y.toFixed(1),x2:W-padR,y2:y.toFixed(1)}));
+      const t=el('text',{class:'axis-label y-label',x:padL-6,y:(y+3).toFixed(1)});
+      t.textContent = v.toFixed(2)+'x'; svg.appendChild(t);
+    });
+
+    const pathFor = vals => vals.map((v,i)=> (i===0?'M':'L')+xForSeries(vals,i).toFixed(1)+','+yFor(v).toFixed(1)).join(' ');
+    svg.appendChild(el('path',{class:'line-cdi', d:pathFor(cdiSeries)}));
+    series.forEach((vals,i)=>{
+      svg.appendChild(el('path',{d:pathFor(vals), fill:'none', stroke:FUND_COLORS[i%FUND_COLORS.length], 'stroke-width':'1.8'}));
+    });
+
+    const refDates = longest.m.joined.map(j=>j.date);
+    [0, Math.floor((refDates.length-1)/2), refDates.length-1].forEach(i=>{
+      const t=el('text',{class:'axis-label x-label', x:xForSeries(cdiSeries,i).toFixed(1), y:H-padB+16});
+      t.textContent = fmtDateBR(refDates[i]); svg.appendChild(t);
+    });
+  }
+
+  function renderMultiDrawdownChart(computed){
+    const svg = $('cmpDdSvg'); svg.innerHTML='';
+    const W=800,H=180,padL=44,padR=10,padT=10,padB=26;
+    const chartW=W-padL-padR, chartH=H-padT-padB;
+    const allDD = computed.flatMap(c=>c.m.dd.dd);
+    const minV = Math.min(...allDD,0), maxV=0.005;
+    const yFor = v => padT + (maxV-v)/(maxV-minV)*chartH;
+    const y0 = yFor(0);
+    const xForSeries = (vals,i) => padL + (i/(vals.length-1))*chartW;
+
+    [minV, minV/2, 0].forEach(v=>{
+      const y=yFor(v);
+      svg.appendChild(el('line',{class:'grid-line',x1:padL,y1:y.toFixed(1),x2:W-padR,y2:y.toFixed(1)}));
+      const t=el('text',{class:'axis-label y-label',x:padL-6,y:(y+3).toFixed(1)});
+      t.textContent=(v*100).toFixed(0)+'%'; svg.appendChild(t);
+    });
+    svg.appendChild(el('line',{class:'zero-line', x1:padL, y1:y0.toFixed(1), x2:W-padR, y2:y0.toFixed(1)}));
+
+    computed.forEach((c,i)=>{
+      const vals = c.m.dd.dd;
+      const d = pathForVals(vals, (v)=>yFor(v), xForSeries);
+      svg.appendChild(el('path',{d, fill:'none', stroke:FUND_COLORS[i%FUND_COLORS.length], 'stroke-width':'1.6'}));
+    });
+    function pathForVals(vals, yFn, xFn){
+      return vals.map((v,i)=>(i===0?'M':'L')+xFn(vals,i).toFixed(1)+','+yFn(v).toFixed(1)).join(' ');
+    }
+
+    const longest = computed.reduce((a,c)=>c.m.dates.length>a.m.dates.length?c:a, computed[0]);
+    [0, Math.floor((longest.m.dates.length-1)/2), longest.m.dates.length-1].forEach(i=>{
+      const t=el('text',{class:'axis-label x-label', x:xForSeries(longest.m.dd.dd,i).toFixed(1), y:H-padB+16});
+      t.textContent = fmtDateBR(longest.m.dates[i]); svg.appendChild(t);
+    });
   }
 })();
 </script>
